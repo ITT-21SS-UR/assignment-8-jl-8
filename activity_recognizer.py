@@ -21,6 +21,36 @@ class GestureNodeState(Enum):
     IDLE = 3
 
 
+class GestureListItem(QtGui.QWidget):
+
+    def __init__(self, parent=None):
+        super(GestureListItem, self).__init__(parent)
+        self.label = QtGui.QLabel("ee")
+        self.button = QtGui.QPushButton()
+        self.init_ui()
+        self.show()
+
+    def init_ui(self):
+        item_layout = QtGui.QHBoxLayout()
+
+        item_layout.addWidget(self.label)
+        item_layout.addWidget(self.button)
+
+        self.setLayout(item_layout)
+
+    def set_label_text(self, text):
+        self.label.setText(text)
+
+    def set_button_text(self, text):
+        self.button.setText(text)
+
+    def set_button_icon(self, icon):
+        self.button.setIcon(icon)
+
+    def get_label_text(self):
+        return self.label.text()
+
+
 class GestureRecognitionNode(Node):
     FEATURES = "features"
     OUTPUT = "output"
@@ -46,6 +76,7 @@ class GestureRecognitionNode(Node):
         }
 
         self._init_ui()
+        self._init_confirm_windows()
         self.clf = svm.SVC(kernel='linear')
 
         Node.__init__(self, name, terminals=terminals)
@@ -56,6 +87,16 @@ class GestureRecognitionNode(Node):
 
         if self.state == GestureNodeState.PREDICTING:
             self.predict(kwargs)
+
+    def _init_confirm_windows(self):
+        self.confirm_window_delete_gesture = uic.loadUi("confirm_action_ui.ui")
+        self.confirm_window_delete_gesture.confirmButton.clicked.connect(self.delete_selected_gesture)
+        self.confirm_window_delete_gesture.cancelButton.clicked.connect(lambda:
+                                                                        self.confirm_window_delete_gesture.close())
+
+        self.confirm_window_retrain_gesture = uic.loadUi("confirm_action_ui.ui")
+        self.confirm_window_retrain_gesture.cancelButton.clicked.connect(
+            lambda: self.confirm_window_retrain_gesture.close())
 
     def _init_ui(self):
         # self.ui = uic.loadUi("gesture_node_ui.ui")
@@ -95,6 +136,7 @@ class GestureRecognitionNode(Node):
         self.delete_button = QtGui.QPushButton("Delete Gesture")
 
         self.add_button.clicked.connect(self._on_add_button_clicked)
+        self.edit_button.clicked.connect(self._on_edit_button_clicked)
         self.delete_button.clicked.connect(self._on_delete_button_clicked)
 
     def _init_radio_buttons(self):
@@ -116,10 +158,36 @@ class GestureRecognitionNode(Node):
         button_box = self.add_gesture_window.buttonBox
         button_box.accepted.connect(self.on_new_gesture_added)
 
+    def _on_edit_button_clicked(self):
+        self.edit_gesture_window = uic.loadUi("add_gesture.ui")
+        self.edit_gesture_window.gestureNameInput.setText(
+            self.gesture_dict[self.gesture_list.currentItem().identifier]['name'])
+
+        self.edit_gesture_window.buttonBox.accepted.connect(self.on_gesture_edited)
+
+        self.edit_gesture_window.show()
+
     def _on_delete_button_clicked(self):
-        self.gesture_dict.pop(self.gesture_list.currentItem().text(), None)
+        if self.confirm_window_delete_gesture is None:
+            self.confirm_window_delete_gesture = uic.loadUi("confirm_action_ui.ui")
+
+        if self.gesture_list.currentItem() is None:
+            return
+
+        self.confirm_window_delete_gesture.show()
+
+    def on_gesture_edited(self):
+        identifier = self.gesture_list.currentItem().identifier
+        new_name = self.edit_gesture_window.gestureNameInput.text()
+        self.gesture_list.itemWidget(self.gesture_list.currentItem()).set_label_text(new_name)
+
+        self.gesture_dict[identifier]['name'] = new_name
+
+    def delete_selected_gesture(self):
+        self.gesture_dict.pop(self.gesture_list.currentItem().identifier, None)
         row = self.gesture_list.currentRow()
         self.gesture_list.takeItem(row)
+        self.confirm_window_delete_gesture.close()
 
     def on_radio_button_clicked(self, button):
         if button is self.train_button:
@@ -138,12 +206,33 @@ class GestureRecognitionNode(Node):
         return self.ui
 
     def on_new_gesture_added(self):
-        self.gesture_dict[self.gesture_input.text()] = {}
-        self.gesture_dict[self.gesture_input.text()]['id'] = self.gesture_id
-        self.gesture_dict[self.gesture_input.text()][self.FEATURE_DATA] = []
+        self.gesture_dict[self.gesture_id] = {}
+        self.gesture_dict[self.gesture_id]['name'] = self.gesture_input.text()
+        self.gesture_dict[self.gesture_id][self.FEATURE_DATA] = []
+
+        my_list_widget = GestureListItem()
+        my_list_widget.set_label_text(self.gesture_input.text())
+        my_list_widget.set_button_text(" Reset Gesture Training")
+        my_list_widget.set_button_icon(QtGui.QIcon('redo.png'))
+
+        list_item = QtGui.QListWidgetItem(self.gesture_list)
+        list_item.setSizeHint(my_list_widget.sizeHint())
+        list_item.identifier = self.gesture_id
+        self.gesture_list.addItem(list_item)
+        self.gesture_list.setItemWidget(list_item, my_list_widget)
+        self.gesture_list.setCurrentItem(list_item)
+
+        my_list_widget.button.clicked.connect(lambda: self.on_reset_gesture_training_clicked(list_item.identifier))
         self.gesture_id += 1
 
-        self.gesture_list.addItem(self.gesture_input.text())
+    def on_reset_gesture_training_clicked(self, gesture_id):
+        self.confirm_window_retrain_gesture.confirmButton.clicked.connect(lambda: self.reset_gesture_training(gesture_id))
+        self.confirm_window_retrain_gesture.show()
+
+    def reset_gesture_training(self, gesture_id):
+        self.gesture_dict[gesture_id][self.FEATURE_DATA].clear()
+        self.confirm_window_retrain_gesture.confirmButton.clicked.disconnect()
+        self.confirm_window_retrain_gesture.close()
 
     def recalculate_ui_height(self):
         self.ui.setFixedHeight(self.BUTTON_LAYOUT_HEIGHT + len(self.gesture_dict.keys()) * 50)
@@ -157,9 +246,8 @@ class GestureRecognitionNode(Node):
         if not self.recording:
             return
 
-        gesture_name = current_item.text()
         features = kwargs[self.FEATURES]
-        self.gesture_dict[gesture_name][self.FEATURE_DATA].append(features)
+        self.gesture_dict[current_item.identifier][self.FEATURE_DATA].append(features)
 
         fit_samples = []
         fit_targets = []
@@ -168,7 +256,7 @@ class GestureRecognitionNode(Node):
             for feature in self.gesture_dict[key][self.FEATURE_DATA]:
                 feature = feature.flatten()
                 fit_samples.append(feature)
-                fit_targets.append(self.gesture_dict[key]['id'])
+                fit_targets.append(key)
 
         if not all(p == fit_targets[0] for p in fit_targets):
             self.clf.fit(fit_samples, fit_targets)
@@ -184,8 +272,8 @@ class GestureRecognitionNode(Node):
                 return
 
             for key in self.gesture_dict:
-                if self.gesture_dict[key]['id'] == prediction[0]:
-                    print(key)
+                if key == prediction[0]:
+                    print(self.gesture_dict[key]['name'])
 
     def set_recording(self, is_recording):
         self.recording = is_recording
@@ -221,9 +309,9 @@ class FeatureExtractionFilter(Node):
         Node.__init__(self, name, terminals=terminals)
 
     def process(self, **kargs):
-        fft_x = numpy.fft.fft(kargs[self.INPUT_X])
-        fft_y = numpy.fft.fft(kargs[self.INPUT_Y])
-        fft_z = numpy.fft.fft(kargs[self.INPUT_Y])
+        # fft_x = numpy.fft.fft(kargs[self.INPUT_X])
+        # fft_y = numpy.fft.fft(kargs[self.INPUT_Y])
+        # fft_z = numpy.fft.fft(kargs[self.INPUT_Y])
 
         # return {'fft': np.array([fft_x, fft_y, fft_z])}
         if len(kargs[self.INPUT_X]) == BUFFER_NODE_SIZE:
@@ -262,6 +350,7 @@ def keyReleaseEvent(event):
     if event.key() == QtCore.Qt.Key_R:
         if not event.isAutoRepeat():
             gesture_node.set_recording(False)
+
 
 if __name__ == '__main__':
     app = QtGui.QApplication([])
