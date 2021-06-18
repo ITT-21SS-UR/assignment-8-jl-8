@@ -258,6 +258,7 @@ class GestureRecognitionNode(Node):
         features = kwargs[self.FEATURES]
         self.gesture_dict[current_item.identifier][self.FEATURE_DATA].append(features)
 
+    def train(self):
         fit_samples = []
         fit_targets = []
 
@@ -274,15 +275,15 @@ class GestureRecognitionNode(Node):
         features = kwargs[self.FEATURES]
         features = features.flatten()
 
-        if len(features) == 51:  # TODO find out where this arbitrary number comes from and insert something that makes sense
-            try:
-                prediction = self.clf.predict([features])
-            except NotFittedError:
-                return
+        # if len(features) == 51:  # TODO find out where this arbitrary number comes from and insert something that makes sense
+        try:
+            prediction = self.clf.predict([features])
+        except NotFittedError:
+            return
 
-            for key in self.gesture_dict:
-                if key == prediction[0]:
-                    return {self.OUTPUT: self.gesture_dict[key]['name']}
+        for key in self.gesture_dict:
+            if key == prediction[0]:
+                return {self.OUTPUT: self.gesture_dict[key]['name']}
 
     def set_recording(self, is_recording):
         self.recording = is_recording
@@ -334,11 +335,6 @@ class FeatureExtractionFilter(Node):
         Node.__init__(self, name, terminals=terminals)
 
     def process(self, **kargs):
-        # fft_x = numpy.fft.fft(kargs[self.INPUT_X])
-        # fft_y = numpy.fft.fft(kargs[self.INPUT_Y])
-        # fft_z = numpy.fft.fft(kargs[self.INPUT_Y])
-
-        # return {'fft': np.array([fft_x, fft_y, fft_z])}
         if len(kargs[self.INPUT_X]) == BUFFER_NODE_SIZE:
             spectrogram_x = signal.spectrogram(kargs[self.INPUT_X], nperseg=BUFFER_NODE_SIZE)
             spectrogram_y = signal.spectrogram(kargs[self.INPUT_Y], nperseg=BUFFER_NODE_SIZE)
@@ -377,6 +373,7 @@ def keyReleaseEvent(event):
     if event.key() == QtCore.Qt.Key_R:
         if not event.isAutoRepeat():
             gesture_node.set_recording(False)
+            gesture_node.train()
 
 
 class GestureTextWidget(QtGui.QWidget):
