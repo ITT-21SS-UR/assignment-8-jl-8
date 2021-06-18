@@ -60,12 +60,16 @@ class GestureRecognitionNode(Node):
     state = GestureNodeState.IDLE
 
     gesture_dict = {}
+    output_val = {OUTPUT: "-"}
     FEATURE_DATA = 'feature_data'
     gesture_id = 0
     recording = False
     TRAIN_LABEL_HELP_MESSAGE = "Select a gesture in the list, then press and hold 'R' on your \nkeyboard while" \
                                " performing the gesture to record a sample.\nRelease 'R' once you are done with" \
                                " the gesture"
+    NOT_ENOUGH_GESTURES_ADDED = "There are not enough gestures recorded.\nPlease add more gestures."
+    NOT_ENOUGH_GESTURES_TRAINED = "There are not enough gestures with training data\nPlease train at least 2 gestures."
+    SWITCH_TO_PREDICTION_MODE = "Switch to prediction mode to see the predicted performed gesture."
 
     BUTTON_LAYOUT_HEIGHT = 100
 
@@ -82,11 +86,16 @@ class GestureRecognitionNode(Node):
         Node.__init__(self, name, terminals=terminals)
 
     def process(self, **kwargs):
+        self.output_val = {self.OUTPUT: "-"}
         if self.state == GestureNodeState.TRAINING:
             self.handle_training(kwargs)
 
         if self.state == GestureNodeState.PREDICTING:
-            self.predict(kwargs)
+            self.output_val = self.predict(kwargs)
+
+        self.set_special_output()
+
+        return self.output_val
 
     def _init_confirm_windows(self):
         self.confirm_window_delete_gesture = uic.loadUi("confirm_action_ui.ui")
@@ -273,7 +282,7 @@ class GestureRecognitionNode(Node):
 
             for key in self.gesture_dict:
                 if key == prediction[0]:
-                    print(self.gesture_dict[key]['name'])
+                    return {self.OUTPUT: self.gesture_dict[key]['name']}
 
     def set_recording(self, is_recording):
         self.recording = is_recording
@@ -285,6 +294,22 @@ class GestureRecognitionNode(Node):
             self.train_help_label.setText("Recording...")
         else:
             self.train_help_label.setText(self.TRAIN_LABEL_HELP_MESSAGE)
+
+    def set_special_output(self):
+        if len(self.gesture_dict) >= 2:
+            trained_gestures = 0
+            for key in self.gesture_dict:
+                if len(self.gesture_dict[key][self.FEATURE_DATA]) > 0:
+                    trained_gestures += 1
+
+            if trained_gestures >= 2:
+                if self.state != GestureNodeState.PREDICTING:
+                    self.output_val = {self.OUTPUT: self.SWITCH_TO_PREDICTION_MODE}
+            else:
+                self.output_val = {self.OUTPUT: self.NOT_ENOUGH_GESTURES_TRAINED}
+
+        else:
+            self.output_val = {self.OUTPUT: self.NOT_ENOUGH_GESTURES_ADDED}
 
 
 fclib.registerNodeType(GestureRecognitionNode, [('Assignment 8',)])
@@ -339,6 +364,8 @@ def connect_nodes():
     fc.connectTerminals(feature_extraction_node[FeatureExtractionFilter.OUTPUT],
                         gesture_node[GestureRecognitionNode.FEATURES])
 
+    fc.connectTerminals(gesture_node[GestureRecognitionNode.OUTPUT], text_node[DisplayTextNode.INPUT])
+
 
 def keyPressEvent(event):
     if event.key() == QtCore.Qt.Key_R:
@@ -352,12 +379,56 @@ def keyReleaseEvent(event):
             gesture_node.set_recording(False)
 
 
+class GestureTextWidget(QtGui.QWidget):
+
+    def __init__(self):
+        super().__init__()
+        self._init_ui()
+
+    def _init_ui(self):
+        self.layout = QtGui.QVBoxLayout()
+        self.header_label = QtGui.QLabel("Currently predicted gesture: ")
+        self.gesture_name_label = QtGui.QLabel("-")
+
+        self.layout.addWidget(self.header_label)
+        self.layout.addWidget(self.gesture_name_label)
+        self.setLayout(self.layout)
+
+        self.setSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum)
+        self.show()
+
+    def set_text(self, text):
+        self.gesture_name_label.setText(text)
+
+
+class DisplayTextNode(Node):
+
+    INPUT = 'in'
+    widget = None
+
+    nodeName = "DisplayTextNode"
+
+    def __init__(self, name):
+        terminals = {
+            self.INPUT: dict(io='in'),
+        }
+
+        Node.__init__(self, name, terminals=terminals)
+
+    def set_widget(self, widget):
+        self.widget = widget
+
+    def process(self, **kargs):
+        self.widget.set_text(kargs[self.INPUT])
+
+
+fclib.registerNodeType(DisplayTextNode, [('Assignment 8',)])
+
 if __name__ == '__main__':
     app = QtGui.QApplication([])
     win = QtGui.QMainWindow()
     win.setWindowTitle('DIPPIDNode demo')
-    win.setMinimumWidth(450)
-    win.setMinimumHeight(500)
+    win.resize(800, 650)
     cw = QtGui.QWidget()
     win.setCentralWidget(cw)
     layout = QtGui.QGridLayout()
@@ -369,6 +440,11 @@ if __name__ == '__main__':
     fc = Flowchart(terminals={})
     layout.addWidget(fc.widget(), 0, 0, 2, 1)
 
+    text_item = GestureTextWidget()
+    text_node = fc.createNode(DisplayTextNode.nodeName, pos=(200, -100))
+    text_node.set_widget(text_item)
+    layout.addWidget(text_item, 0, 1)
+
     dippid_node = fc.createNode('DIPPID', pos=(0, -50))
     buffer_node_x = fc.createNode('Buffer', pos=(100, -100))
     buffer_node_y = fc.createNode('Buffer', pos=(100, -50))
@@ -377,6 +453,8 @@ if __name__ == '__main__':
     gesture_node = fc.createNode(GestureRecognitionNode.nodeName, pos=(200, -50))
 
     connect_nodes()
+
+
 
     win.show()
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
