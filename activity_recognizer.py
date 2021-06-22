@@ -260,10 +260,6 @@ class GestureRecognitionNode(Node):
         self.confirm_window_retrain_gesture.confirmButton.clicked.disconnect()
         self.confirm_window_retrain_gesture.close()
 
-    def recalculate_ui_height(self):
-        self.ui.setFixedHeight(self.BUTTON_LAYOUT_HEIGHT + len(self.gesture_dict.keys()) * 50)
-        self.update()
-
     def handle_training(self, kwargs):
         current_item = self.gesture_list.currentItem()
         if current_item is None:
@@ -333,6 +329,11 @@ fclib.registerNodeType(GestureRecognitionNode, [('Assignment 8',)])
 
 
 class FeatureExtractionFilter(Node):
+    """
+    This node takes three inputs (accelerometer values via BufferNodes) and processes them via
+    the signal.spectrogram function.
+    The node output uses the third return value of the spectrogram function of each input.
+    """
     INPUT_X = "in_x"
     INPUT_Y = "in_y"
     INPUT_Z = "in_z"
@@ -393,6 +394,9 @@ def keyReleaseEvent(event):
 
 
 class GestureTextWidget(QtGui.QWidget):
+    """
+    Small widget for displaying information about the gesture on screen as a simple label
+    """
 
     def __init__(self):
         super().__init__()
@@ -415,6 +419,11 @@ class GestureTextWidget(QtGui.QWidget):
 
 
 class DisplayTextNode(Node):
+    """
+    Node that gets a single input and displays it on the widget set via set_widget
+    In this application the widget is set to a GestureTextWidget, which displays the current gesture information
+    on screen.
+    """
 
     INPUT = 'in'
     widget = None
