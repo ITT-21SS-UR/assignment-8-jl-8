@@ -52,6 +52,18 @@ class GestureListItem(QtGui.QWidget):
 
 
 class GestureRecognitionNode(Node):
+    """
+    This node handles adding, training, editing, deleting and predicting gestures
+    The user can add/edit/delete gestures to the list via the respective buttons
+    Training data for gestures can then be recorded by swapping the node to "training" mode and performing the gesture
+    while holding down the "R" key on a connected keyboard
+
+    Training data for a single gesture can be reset by clicking the "Reset Gesture Training" button. This will only
+    affect the gesture from that row.
+
+    After adding and training at least two gestures, the "prediction" mode is functional. The matched gesture
+    will be displayed on screen by :class:GestureTextWidget
+    """
     FEATURES = "features"
     OUTPUT = "output"
 
@@ -81,7 +93,7 @@ class GestureRecognitionNode(Node):
 
         self._init_ui()
         self._init_confirm_windows()
-        self.clf = svm.SVC(kernel='linear')
+        self.clf = svm.SVC(kernel='rbf')
 
         Node.__init__(self, name, terminals=terminals)
 
@@ -222,6 +234,10 @@ class GestureRecognitionNode(Node):
         my_list_widget = GestureListItem()
         my_list_widget.set_label_text(self.gesture_input.text())
         my_list_widget.set_button_text(" Reset Gesture Training")
+
+        # redo icon from flaticon.com - Free for personal and commercial purpose with attribution link:
+        # https://www.flaticon.com/free-icon/redo_1828040?term=redo&page=1&position=2&page=1&position=2&related_id
+        # =1828040&origin=tag
         my_list_widget.set_button_icon(QtGui.QIcon('redo.png'))
 
         list_item = QtGui.QListWidgetItem(self.gesture_list)
