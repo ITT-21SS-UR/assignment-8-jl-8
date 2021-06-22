@@ -251,7 +251,8 @@ class GestureRecognitionNode(Node):
         self.gesture_id += 1
 
     def on_reset_gesture_training_clicked(self, gesture_id):
-        self.confirm_window_retrain_gesture.confirmButton.clicked.connect(lambda: self.reset_gesture_training(gesture_id))
+        self.confirm_window_retrain_gesture.confirmButton.clicked\
+            .connect(lambda: self.reset_gesture_training(gesture_id))
         self.confirm_window_retrain_gesture.show()
 
     def reset_gesture_training(self, gesture_id):
@@ -291,7 +292,6 @@ class GestureRecognitionNode(Node):
         features = kwargs[self.FEATURES]
         features = features.flatten()
 
-        # if len(features) == 51:  # TODO find out where this arbitrary number comes from and insert something that makes sense
         try:
             prediction = self.clf.predict([features])
         except NotFittedError:
@@ -466,8 +466,6 @@ if __name__ == '__main__':
     gesture_node = fc.createNode(GestureRecognitionNode.nodeName, pos=(200, -50))
 
     connect_nodes()
-
-
 
     win.show()
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
